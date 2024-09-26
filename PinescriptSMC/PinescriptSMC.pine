@@ -1,0 +1,75 @@
+//@version=5
+strategy("SMC Strategy", overlay=true)
+
+// Inputs for customization
+var color bullishOrderBlockColor = color.new(color.green, 80)
+var color bearishOrderBlockColor = color.new(color.red, 80)
+
+// Define time periods to focus (useful for different trading sessions)
+//sessionStart = input.time(timestamp("2023-01-01 00:00"), title="Session Start")
+//sessionEnd = input.time(timestamp("2023-12-31 00:00"), title="Session End")
+showOrderBlocks = input(true, "Show Order Blocks")
+riskRewardRatio = input.float(2.0, "Risk-Reward Ratio")
+
+// Define SMC concepts
+var float highPoint = na
+var float lowPoint = na
+
+// Market structure shift - look for break of structure (BoS)
+isBullishShift = ta.highest(10)[1] > ta.highest(10)[2]
+isBearishShift = ta.lowest(10)[1] < ta.lowest(10)[2]
+
+// Mark order blocks after market shift
+if (isBullishShift)
+    highPoint := high
+if (isBearishShift)
+    lowPoint := low
+
+// Define order blocks
+var line bullishOB = na
+var line bearishOB = na
+// Order Block Detection and Drawing with Rectangles
+var box bullishOrderBlock = na
+var box bearishOrderBlock = na
+if (isBullishShift and showOrderBlocks)
+    if (na(bullishOrderBlock)) 
+        bullishOrderBlock := box.new(left=bar_index[1], top=high, right=bar_index[1] + 10, bottom=low, border_color=color.green, border_width=2, bgcolor=bullishOrderBlockColor)
+    else 
+        box.set_right(bullishOrderBlock, bar_index[1] + 10)
+
+if (isBearishShift and showOrderBlocks)
+    if (na(bearishOrderBlock)) 
+        bearishOrderBlock := box.new(left=bar_index[1], top=high, right=bar_index[1] + 10, bottom=low, border_color=color.red, border_width=2, bgcolor=bearishOrderBlockColor)
+    else 
+        box.set_right(bearishOrderBlock, bar_index[1] + 10)
+
+// Define liquidity sweep zones (wicks)
+liquiditySweepUp = high > ta.highest(10)[1]
+liquiditySweepDown = low < ta.lowest(10)[1]
+// Plot liquidity sweeps as liquidity floors and ceilings
+if (liquiditySweepDown)
+    line.new(bar_index[0], low, bar_index[0] + 5, low, width=2, color=color.new(color.blue, 0), style=line.style_solid)
+
+if (liquiditySweepUp)
+    line.new(bar_index[0], high, bar_index[0] + 5, high, width=2, color=color.new(color.purple, 0), style=line.style_solid)
+// Entry strategy
+longCondition = liquiditySweepDown and close > open
+shortCondition = liquiditySweepUp and close < open
+
+// Trigger buy and sell signals
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+    strategy.exit("TP", "Long", stop=low, limit=low + (high - low) * riskRewardRatio)
+    label.new(bar_index[0],low, text = "Long SL: "+ str.tostring(low),style = label.style_label_down,color = color.red)
+    label.new(bar_index[0],low + (high - low) * riskRewardRatio, text = "Long TP: "+ str.tostring(low + (high - low) * riskRewardRatio),style = label.style_label_up,color = color.green)
+
+if (shortCondition)
+    strategy.entry("Short", strategy.short)
+    strategy.exit("TP", "Short", stop=high, limit=high - (high - low) * riskRewardRatio)
+    label.new(bar_index[0],high, text = "Short SL: "+ str.tostring(high),style = label.style_label_down,color = color.red)
+    label.new(bar_index[0],high - (high - low) * riskRewardRatio, text = "Short TP: "+ str.tostring(high - (high - low) * riskRewardRatio),style = label.style_label_up,color = color.green)
+
+
+// Plotting signals
+plotshape(series=longCondition, title="Long Entry", location=location.belowbar, color=color.green, style=shape.labelup, text="BUY")
+plotshape(series=shortCondition, title="Short Entry", location=location.abovebar, color=color.red, style=shape.labeldown, text="SELL")
